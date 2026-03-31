@@ -1,16 +1,10 @@
-# main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import password, url_scanner
-import uvicorn
+from routers import url_scanner, password
 
-app = FastAPI(
-    title="Project Cerberus API", 
-    description="Dual-Threat Security: Password Exposure & AI Phishing Detection",
-    version="1.0"
-)
+app = FastAPI(title="Cerberus API")
 
-# CRITICAL: CORS Configuration for the frontend
+# Allow your React/Next.js frontend to talk to this backend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
@@ -19,13 +13,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Wire up the endpoints (Heads of Cerberus)
-app.include_router(password.router, prefix="/api/password", tags=["Password Security"])
-app.include_router(url_scanner.router, prefix="/api/url", tags=["URL & Phishing Scanner"])
-
-@app.get("/")
-def read_root():
-    return {"status": "success", "message": "Project Cerberus Backend is LIVE."}
-
-if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+# Connect your route handlers
+app.include_router(url_scanner.router)
+app.include_router(password.router)

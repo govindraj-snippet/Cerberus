@@ -10,7 +10,6 @@ def check_safe_browsing(url: str) -> dict:
     if not VT_API_KEY:
         return {"is_safe": True, "note": "VirusTotal bypassed (No API Key)"}
 
-    # VirusTotal requires the URL to be safely encoded before sending
     url_id = base64.urlsafe_b64encode(url.encode()).decode().strip("=")
     api_url = f"https://www.virustotal.com/api/v3/urls/{url_id}"
     
@@ -23,15 +22,12 @@ def check_safe_browsing(url: str) -> dict:
         response = requests.get(api_url, headers=headers, timeout=5)
         data = response.json()
         
-        # If the URL is brand new and not in their database, it's considered "Safe" for now
         if response.status_code == 404:
-            return {"is_safe": True, "note": "URL not found in VirusTotal database. Relying on AI Engine."}
+            return {"is_safe": True, "note": "URL not found in VirusTotal database."}
             
-        # Catch other API errors (like an invalid key)
         if "error" in data:
             return {"is_safe": "ERROR", "api_error_message": data["error"]["message"]}
             
-        # Check the scan results from the 90+ security vendors
         stats = data["data"]["attributes"]["last_analysis_stats"]
         malicious_count = stats.get("malicious", 0)
         suspicious_count = stats.get("suspicious", 0)
@@ -40,7 +36,7 @@ def check_safe_browsing(url: str) -> dict:
             return {
                 "is_safe": False, 
                 "threat_type": "MALWARE/PHISHING",
-                "details": f"Flagged as dangerous by {malicious_count + suspicious_count} security vendors."
+                "details": f"Flagged as dangerous by {malicious_count + suspicious_count} vendors."
             }
             
         return {"is_safe": True}
