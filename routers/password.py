@@ -27,17 +27,17 @@ def check_password(request: PasswordRequest):
     if is_breached:
         is_safe_to_use = False
         breach_count = breach_data.get("breach_count", "multiple")
-        user_message = f"🚨 DANGER: This password has been exposed in {breach_count} known data breaches! Do NOT use it anywhere."
+        user_message = f" DANGER: This password has been exposed in {breach_count} known data breaches! Do NOT use it anywhere."
         
     # Rule 2: Strict failure if the score is 3 or lower
     elif score < 4:
         is_safe_to_use = False
-        user_message = f"⚠️ WARNING: Security Score {score}/4. This hasn't been breached, but it is not strong enough. Please use a longer, more unpredictable passphrase."
+        user_message = f" WARNING: Security Score {score}/4. This hasn't been breached, but it is not strong enough. Please use a longer, more unpredictable passphrase."
         
     # Rule 3: Only perfect passwords pass
     else:
         is_safe_to_use = True
-        user_message = "✅ SAFE: This is a strong, highly secure password that has never been breached. You can confidently use it."
+        user_message = " SAFE: This is a strong, highly secure password that has never been breached. You can confidently use it."
 
     # 3. Return the clean JSON response
     return {

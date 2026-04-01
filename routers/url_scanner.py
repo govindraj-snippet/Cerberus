@@ -36,22 +36,22 @@ def scan_url(request: URLRequest):
     # Rule A: Instant failure if the database (like VirusTotal) flags it
     if not db_is_safe:
         final_verdict = False
-        user_message = "🚨 DANGER: This website has been flagged as a known threat (MALWARE/PHISHING). Do NOT visit this link!"
+        user_message = "DANGER: This website has been flagged as a known threat (MALWARE/PHISHING). Do NOT visit this link!"
         
     # Rule B: AI catches severe suspicious patterns (Score 50+)
     elif ai_score >= 50:
         final_verdict = False
-        user_message = f"⚠️ WARNING: Our AI detected severe suspicious patterns (Risk Score: {ai_score}/100). Proceed with extreme caution."
+        user_message = f" WARNING: Our AI detected severe suspicious patterns (Risk Score: {ai_score}/100). Proceed with extreme caution."
         
     # Rule C: AI catches minor issues, like missing HTTPS (Score 30-49)
     elif ai_score >= 30:
         final_verdict = True 
-        user_message = f"🟡 MILD RISK: This site isn't flagged as malicious, but it lacks encryption or has minor suspicious traits (Risk Score: {ai_score}/100). Do not enter passwords here."
+        user_message = f" MILD RISK: This site isn't flagged as malicious, but it lacks encryption or has minor suspicious traits (Risk Score: {ai_score}/100). Do not enter passwords here."
         
     # Rule D: Clean bill of health
     else:
         final_verdict = True
-        user_message = "✅ SAFE: This website checks out as completely safe. You can browse it with confidence."
+        user_message = "SAFE: This website checks out as completely safe. You can browse it with confidence."
 
     # 4. Return Data
     return {
