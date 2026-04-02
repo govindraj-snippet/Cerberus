@@ -1,8 +1,14 @@
 import React, { useState } from 'react';
-import { Shield, Eye, EyeOff, Activity, ShieldAlert, Key, Zap, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Shield, Eye, EyeOff, Activity, ShieldAlert, Key, Zap, CheckCircle, AlertTriangle, User, Calendar, Mail, ChevronDown, ChevronUp } from 'lucide-react';
 
 export default function PasswordEvaluator() {
   const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
+  const [dob, setDob] = useState('');
+  const [email, setEmail] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -20,7 +26,13 @@ export default function PasswordEvaluator() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ password: password }),
+        body: JSON.stringify({ 
+          password: password,
+          name: name.trim() || undefined,
+          username: username.trim() || undefined,
+          dob: dob.trim() || undefined,
+          email: email.trim() || undefined
+        }),
       });
       
       if (!response.ok) {
@@ -99,6 +111,98 @@ export default function PasswordEvaluator() {
                 {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
               </button>
             </div>
+          </div>
+
+          {/* Advanced Context Section */}
+          <div className="border border-gray-200 dark:border-slate-700 rounded-md overflow-hidden transition-colors">
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-slate-800/50 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              <div className="flex items-center space-x-2">
+                <User className="h-4 w-4 text-gray-500 dark:text-slate-400" />
+                <span className="text-sm font-medium text-gray-700 dark:text-slate-300">Personal Context (Optional)</span>
+              </div>
+              {showAdvanced ? (
+                <ChevronUp className="h-4 w-4 text-gray-500 dark:text-slate-400" />
+              ) : (
+                <ChevronDown className="h-4 w-4 text-gray-500 dark:text-slate-400" />
+              )}
+            </button>
+            
+            {showAdvanced && (
+              <div className="p-4 bg-white dark:bg-slate-800/30 grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-gray-200 dark:border-slate-700 transition-colors">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-500 dark:text-slate-400">Full Name</label>
+                  <div className="relative group">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <User className="h-4 w-4 text-gray-400 dark:text-slate-500 group-focus-within:text-cyan-500" />
+                    </div>
+                    <input
+                      type="text"
+                      className="block w-full pl-9 pr-3 py-2 border border-gray-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 sm:text-sm shadow-sm"
+                      placeholder="John Doe"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      disabled={loading}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-500 dark:text-slate-400">Username</label>
+                  <div className="relative group">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <span className="text-gray-400 dark:text-slate-500 font-bold group-focus-within:text-cyan-500">@</span>
+                    </div>
+                    <input
+                      type="text"
+                      className="block w-full pl-9 pr-3 py-2 border border-gray-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 sm:text-sm shadow-sm"
+                      placeholder="johndoe88"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      disabled={loading}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-500 dark:text-slate-400">Date of Birth</label>
+                  <div className="relative group">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <Calendar className="h-4 w-4 text-gray-400 dark:text-slate-500 group-focus-within:text-cyan-500" />
+                    </div>
+                    <input
+                      type="text"
+                      className="block w-full pl-9 pr-3 py-2 border border-gray-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 sm:text-sm shadow-sm"
+                      placeholder="YYYY-MM-DD or 1990"
+                      value={dob}
+                      onChange={(e) => setDob(e.target.value)}
+                      disabled={loading}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-500 dark:text-slate-400">Email Address</label>
+                  <div className="relative group">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <Mail className="h-4 w-4 text-gray-400 dark:text-slate-500 group-focus-within:text-cyan-500" />
+                    </div>
+                    <input
+                      type="email"
+                      className="block w-full pl-9 pr-3 py-2 border border-gray-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 sm:text-sm shadow-sm"
+                      placeholder="john@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      disabled={loading}
+                    />
+                  </div>
+                </div>
+                <div className="col-span-1 md:col-span-2 mt-2 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-md border border-amber-100 dark:border-amber-800/30 text-xs text-amber-800 dark:text-amber-300 flex items-start space-x-2">
+                  <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                  <p>Our AI will check if your password contains these predictably guessable inputs to test against targeted social engineering attacks.</p>
+                </div>
+              </div>
+            )}
           </div>
           <button
             type="submit"

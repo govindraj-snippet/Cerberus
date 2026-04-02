@@ -141,7 +141,7 @@ export default function UrlScanner() {
                   <h4 className="text-sm font-bold text-gray-900 dark:text-white">AI Component Analysis</h4>
                 </div>
                 <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase ${
-                  result.ai_analysis.risk_level === 'Low' ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-400' : 
+                  result.ai_analysis.risk_level === 'Safe' ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-400' : 
                   result.ai_analysis.risk_level === 'High' ? 'bg-rose-100 dark:bg-rose-900/40 text-rose-800 dark:text-rose-400' : 
                   'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-400'
                 }`}>
