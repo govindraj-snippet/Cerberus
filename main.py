@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers import url_scanner, password
 
+
 app = FastAPI(title="Cerberus API")
 
 # Allow your React/Next.js frontend to talk to this backend

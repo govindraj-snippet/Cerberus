@@ -1,47 +1,75 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
-from services.hibp_checker import check_pwned_passwords
-from services.password_eval import check_password_strength
+from typing import Optional
+from services.password_eval import analyze_password_strength
+
+# Make sure to import your HIBP database check function here! 
+# Example: from services.database_check import check_hibp_breach
 
 router = APIRouter()
 
 class PasswordRequest(BaseModel):
     password: str
+    name: Optional[str] = None
+    username: Optional[str] = None
+    dob: Optional[str] = None
+    email: Optional[str] = None
 
 @router.post("/api/password/check")
 def check_password(request: PasswordRequest):
-    pwd = request.password
+    target_password = request.password
+    lower_password = target_password.lower()
     
-    # 1. Gather data from our two security services
-    strength_data = check_password_strength(pwd) 
-    breach_data = check_pwned_passwords(pwd)
+    # 2. Gather context variables into a clean list
+    user_context = []
+    if request.name:
+        user_context.extend(request.name.lower().split())
+    if request.username:
+        user_context.append(request.username.lower())
+    if request.dob:
+        user_context.append(request.dob.lower())
+    if request.email:
+        user_context.extend(request.email.lower().replace('@', ' ').replace('.', ' ').split())
+        
+    # 3. Get AI Strength Score
+    strength_data = analyze_password_strength(target_password, user_inputs=user_context)
+    ai_score = strength_data.get("score", 0)
     
-    is_breached = breach_data.get("breached", False)
-    score = strength_data.get("score", 0)
+    # 4. Get Database Breach Check (Replace with your actual DB call)
+    breach_data = {"breached": False, "breach_count": 0} 
     
-    # 2. Calculate the Final Verdict
-    is_safe_to_use = False
+    # --- NEW LOGIC: Check if personal info was actually used in the password ---
+    uses_personal_info = False
+    for info in user_context:
+        # We only check chunks that are 3 characters or longer to avoid false positives 
+        # (like flagging the number "2" just because it's in their birth year)
+        if len(info) >= 3 and info in lower_password:
+            uses_personal_info = True
+            break
+    # -------------------------------------------------------------------------
+            
+    # 5. Calculate Final Verdict & Dynamic Message
+    final_verdict = False
     user_message = ""
     
-    # Rule 1: Instant failure if found in a data breach
-    if is_breached:
-        is_safe_to_use = False
-        breach_count = breach_data.get("breach_count", "multiple")
-        user_message = f" DANGER: This password has been exposed in {breach_count} known data breaches! Do NOT use it anywhere."
+    if breach_data.get("breached"):
+        final_verdict = False
+        user_message = "🚨 DANGER: This password has been found in known data breaches. Change it immediately!"
         
-    # Rule 2: Strict failure if the score is 3 or lower
-    elif score < 4:
-        is_safe_to_use = False
-        user_message = f" WARNING: Security Score {score}/4. This hasn't been breached, but it is not strong enough. Please use a longer, more unpredictable passphrase."
-        
-    # Rule 3: Only perfect passwords pass
+    elif ai_score < 4:
+        final_verdict = False
+        # Give a highly specific warning based on why they failed
+        if uses_personal_info:
+            user_message = f"⚠️ WARNING: Security Score {ai_score}/4. This password contains your personal information, making it extremely easy to hack."
+        else:
+            user_message = f"⚠️ WARNING: Security Score {ai_score}/4. This password is too predictable or common. Please use a stronger phrase."
+            
     else:
-        is_safe_to_use = True
-        user_message = " SAFE: This is a strong, highly secure password that has never been breached. You can confidently use it."
+        final_verdict = True
+        user_message = "✅ SAFE: This is a strong, highly secure password that has never been breached."
 
-    # 3. Return the clean JSON response
     return {
-        "final_verdict": is_safe_to_use,
+        "final_verdict": final_verdict,
         "user_message": user_message,
         "strength_analysis": strength_data,
         "breach_check": breach_data
