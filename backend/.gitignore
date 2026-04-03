@@ -1,3 +1,15 @@
-.env
-__pycache__/
-*.pyc
+# --- Backend (Python/FastAPI) ---
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+backend/.env
+
+# --- Frontend (React/Vite) ---
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.eslintcache
+
+# --- OS Generated Files ---
+.DS_Store
+Thumbs.db
