@@ -1,27 +1,33 @@
-import hashlib
 import requests
+from functools import lru_cache
 
-def check_pwned_passwords(password: str) -> dict:
-    sha1_password = hashlib.sha1(password.encode('utf-8')).hexdigest().upper()
-    prefix = sha1_password[:5]
-    suffix = sha1_password[5:]
+@lru_cache(maxsize=1024)
+def check_pwned_passwords_prefix(prefix: str) -> dict:
+    """
+    Takes a 5-character SHA-1 prefix and returns a list of all matching suffixes and their breach counts.
+    LRU Cache prevents spamming HIBP for repeated prefixes.
+    """
+    prefix = prefix.upper()
+    if len(prefix) != 5:
+        return {"suffixes": [], "error": "Invalid prefix length."}
 
     url = f"https://api.pwnedpasswords.com/range/{prefix}"
     
     try:
         response = requests.get(url, timeout=5)
         if response.status_code != 200:
-            return {"breached": False, "note": "API Error, could not check breach status."}
+            return {"suffixes": [], "note": "API Error, could not check breach status."}
 
-        hashes = (line.split(':') for line in response.text.splitlines())
-        for h, count in hashes:
-            if h == suffix:
-                return {
-                    "breached": True, 
-                    "breach_count": int(count)
-                }
+        suffixes_list = []
+        for line in response.text.splitlines():
+            parts = line.split(':')
+            if len(parts) == 2:
+                suffixes_list.append({
+                    "hash_suffix": parts[0],
+                    "count": int(parts[1])
+                })
                 
-        return {"breached": False, "breach_count": 0}
+        return {"suffixes": suffixes_list}
         
     except Exception as e:
-         return {"breached": False, "error": str(e)}
+         return {"suffixes": [], "error": str(e)}

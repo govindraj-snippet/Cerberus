@@ -1,52 +1,151 @@
-import React, { useState } from 'react';
-import { Shield, Eye, EyeOff, Activity, ShieldAlert, Key, Zap, CheckCircle, AlertTriangle, User, Calendar, Mail, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Shield, Eye, EyeOff, Activity, ShieldAlert, Key, Zap, CheckCircle, AlertTriangle, Fingerprint, Network, Hash, Layers } from 'lucide-react';
+import zxcvbn from 'zxcvbn';
 
 export default function PasswordEvaluator() {
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [username, setUsername] = useState('');
-  const [dob, setDob] = useState('');
-  const [email, setEmail] = useState('');
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  
+  // Live Metrics State
+  const [liveMetrics, setLiveMetrics] = useState({
+    entropy: 0,
+    patterns: [],
+    diversity: 0
+  });
 
-  const handleCheck = async (e) => {
-    e.preventDefault();
-    if (!password.trim()) return;
+  const hashPasswordSHA1 = async (pw) => {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(pw);
+    const hashBuffer = await crypto.subtle.digest('SHA-1', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+  };
 
+  // The debounced side of the analysis (Network Heavy & Custom Heuristics)
+  const executeBreachCheck = async (pwd, zResult) => {
     setLoading(true);
-    setResult(null);
-
     try {
-      const response = await fetch('http://localhost:8000/api/password/check', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          password: password,
-          name: name.trim() || undefined,
-          username: username.trim() || undefined,
-          dob: dob.trim() || undefined,
-          email: email.trim() || undefined
-        }),
-      });
+      let aiScore = zResult.score;
+      let feedback = [];
+
+      // --- ENTERPRISE-GRADE CUSTOM HEURISTICS ---
       
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      // Calculate Diversity
+      let divScore = 0;
+      if (/[a-z]/.test(pwd)) divScore++;
+      if (/[A-Z]/.test(pwd)) divScore++;
+      if (/[0-9]/.test(pwd)) divScore++;
+      if (/[^a-zA-Z0-9]/.test(pwd)) divScore++;
+
+      // 1. Extreme Length & Diversity Gates
+      if (pwd.length < 8) {
+         aiScore = Math.min(aiScore, 1);
+         feedback.push("Passwords under 8 characters are instantly guessable by modern hardware.");
+      } else if (pwd.length < 12) {
+         aiScore = Math.min(aiScore, 2);
+         feedback.push("Passwords under 12 characters are vulnerable to targeted brute-force attacks.");
+      } else if (pwd.length < 14 && aiScore === 4) {
+         aiScore = 3;
+         feedback.push("Ultimate military-grade security requires a minimum length of 14+ characters.");
       }
+
+      if (divScore < 3 && aiScore > 2) {
+         aiScore = Math.min(aiScore, 2);
+         feedback.push("Must contain at least 3 character types (Upper, Lower, Number, Symbol) for high security.");
+      } else if (divScore < 4 && aiScore === 4) {
+         aiScore = 3;
+         feedback.push("Ultimate security requires all 4 character types fully mixed.");
+      }
+
+      // 2. Repetition & Walk Penalties
+      if (/(.)\1{2,}/.test(pwd)) {
+         aiScore = Math.min(aiScore, 2);
+         feedback.push("Avoid repeating the same character sequentially (e.g., 'aaa' or '111').");
+      }
+      if (/(123|qwer|asdf|zxcv|password|admin)/i.test(pwd)) {
+         aiScore = Math.min(aiScore, 1);
+         feedback.push("Contains an extremely common sequence or bad dictionary word (e.g., '123', 'qwer').");
+      }
+
+      // 3. Alphabetical / Name Penalties
+      if (/^[a-zA-Z]+$/.test(pwd)) {
+        aiScore = Math.min(aiScore, 2);
+        feedback.push("Letters-only strings are trivial to crack against leaked dictionaries. Inject entropy.");
+      }
+      if (/^([A-Z][a-z]+){2,}$/.test(pwd)) {
+         aiScore = Math.min(aiScore, 1);
+         feedback.push("Combining CapitalizedWords is a well-known pattern (CamelCase). Interleave symbols and digits internally.");
+      }
+
+      // 4. Predictable Additions (the "Cheating" Penalty)
+      if (/^[a-zA-Z]+[!@#$%^&*()_+]?[0-9]{1,4}$/.test(pwd) || /^[0-9]{1,4}[a-zA-Z]+[!@#$%^&*()_+]?$/.test(pwd)) {
+         aiScore = Math.min(aiScore, 2);
+         feedback.push("Appending numbers/symbols at the ends of words is the most common human habit. Sprinkle them inside the core phrase instead.");
+      }
+      // ==========================================
+
+      if (zResult.feedback.warning) feedback.push(zResult.feedback.warning);
+      feedback = feedback.concat(zResult.feedback.suggestions);
+
+      // Remove duplicate feedback messages
+      feedback = Array.from(new Set(feedback));
+
+      if (aiScore < 4 && feedback.length === 0) feedback.push("Add more random words, numbers, or symbols to improve strength.");
+      if (aiScore === 4 && feedback.length === 0) feedback.push("This password is highly secure and unpredictable!");
+
+      // API Check
+      const sha1Hash = await hashPasswordSHA1(pwd);
+      const prefix = sha1Hash.substring(0, 5);
+      const suffix = sha1Hash.substring(5);
+
+      const response = await fetch(`https://cerberus-v5b5.onrender.com/api/password/breach-check/${prefix}`);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       
       const data = await response.json();
-      setResult(data);
+      
+      let breachCount = 0;
+      let breached = false;
+      const match = data.suffixes.find(s => s.hash_suffix === suffix);
+      if (match) {
+         breached = true;
+         breachCount = match.count;
+      }
+
+      let finalVerdict = false;
+      let userMessage = "";
+      
+      if (breached) {
+        finalVerdict = false;
+        userMessage = "🚨 DANGER: This password has been found in known data breaches. Change it immediately!";
+      } else if (aiScore < 4) {
+        finalVerdict = false;
+        userMessage = `⚠️ WARNING: Security Score ${aiScore}/4. This password is too predictable or common. Please use a stronger phrase.`;
+      } else {
+        finalVerdict = true;
+        userMessage = "✅ SAFE: This is a strong, highly secure password that has never been breached.";
+      }
+
+      setResult({
+        final_verdict: finalVerdict,
+        user_message: userMessage,
+        strength_analysis: {
+           score: aiScore,
+           max_score: 4,
+           feedback: feedback,
+           estimated_guesses_to_crack: zResult.guesses
+        },
+        breach_check: {
+           breached: breached,
+           breach_count: breachCount
+        }
+      });
     } catch (error) {
       console.error("Failed to check password:", error);
-      // Fallback for UI testing if backend is unreachable
       setResult({
           final_verdict: false,
-          user_message: "⚠️ Error contacting the Cerberus API.",
+          user_message: "⚠️ Error contacting the API.",
           strength_analysis: { score: 0, max_score: 4, feedback: ["API Connection Failed."], estimated_guesses_to_crack: 0 },
           breach_check: { breached: false, breach_count: 0 }
       });
@@ -54,6 +153,38 @@ export default function PasswordEvaluator() {
       setLoading(false);
     }
   };
+
+  // Live Typing Effect
+  useEffect(() => {
+    if (!password) {
+        setResult(null);
+        setLiveMetrics({ entropy: 0, patterns: [], diversity: 0 });
+        return;
+    }
+
+    // 1. Sync Computations (Instant)
+    let divScore = 0;
+    if (/[a-z]/.test(password)) divScore++;
+    if (/[A-Z]/.test(password)) divScore++;
+    if (/[0-9]/.test(password)) divScore++;
+    if (/[^a-zA-Z0-9]/.test(password)) divScore++;
+
+    const zxcvbnResult = zxcvbn(password);
+    
+    // Extract unique patterns like 'dictionary', 'spatial', 'repeat'
+    const patterns = Array.from(new Set(zxcvbnResult.sequence.map(item => item.pattern)));
+    const entropy = Math.round(Math.log2(zxcvbnResult.guesses || 1));
+
+    setLiveMetrics({ entropy, patterns, diversity: divScore });
+
+    // 2. Debounced Fetch (Wait 500ms before hitting API)
+    setLoading(true);
+    const timer = setTimeout(() => {
+        executeBreachCheck(password, zxcvbnResult);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [password]);
 
   const renderStrengthMeter = (score, maxScore) => {
     const segments = [];
@@ -80,14 +211,14 @@ export default function PasswordEvaluator() {
           <Key size={24} />
         </div>
         <div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white transition-colors duration-300">Password Strength Evaluator</h2>
-          <p className="text-sm text-gray-500 dark:text-slate-400 font-medium transition-colors duration-300">Test complexity and check historic data breaches</p>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white transition-colors duration-300">Live Strength Evaluator</h2>
+          <p className="text-sm text-gray-500 dark:text-slate-400 font-medium transition-colors duration-300">Instant AI analysis as you type</p>
         </div>
       </div>
 
       {/* Input Section */}
       <div className="p-6 border-b border-gray-100 dark:border-slate-800 transition-colors duration-300">
-        <form onSubmit={handleCheck} className="flex flex-col space-y-4">
+        <form className="flex flex-col space-y-4" onSubmit={(e) => e.preventDefault()}>
           <div>
             <label htmlFor="password-input" className="sr-only">Password</label>
             <div className="relative group">
@@ -98,10 +229,10 @@ export default function PasswordEvaluator() {
                 type={showPassword ? "text" : "password"}
                 id="password-input"
                 className="block w-full pl-10 pr-10 py-3 border border-gray-300 dark:border-slate-700 rounded-md leading-5 bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 dark:focus:ring-cyan-500 focus:border-cyan-500 dark:focus:border-cyan-500 sm:text-sm font-mono tracking-wider transition-colors shadow-sm dark:shadow-slate-900/20"
-                placeholder="Enter password"
+                placeholder="Start typing a password..."
                 value={password}
+                autoComplete="off"
                 onChange={(e) => setPassword(e.target.value)}
-                disabled={loading}
               />
               <button
                 type="button"
@@ -113,122 +244,52 @@ export default function PasswordEvaluator() {
             </div>
           </div>
 
-          {/* Advanced Context Section */}
-          <div className="border border-gray-200 dark:border-slate-700 rounded-md overflow-hidden transition-colors">
-            <button
-              type="button"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-slate-800/50 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              <div className="flex items-center space-x-2">
-                <User className="h-4 w-4 text-gray-500 dark:text-slate-400" />
-                <span className="text-sm font-medium text-gray-700 dark:text-slate-300">Personal Context (Optional)</span>
+          {/* Dynamic Live Signal Monitor */}
+          {password && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 animate-in fade-in duration-300">
+              <div className="bg-slate-50 dark:bg-slate-800/80 border border-gray-200 dark:border-slate-700 rounded p-2.5 flex flex-col items-center justify-center text-center">
+                <Fingerprint className="h-4 w-4 text-purple-500 mb-1" />
+                <span className="text-[10px] uppercase font-bold text-gray-500 dark:text-slate-400 tracking-wider">Entropy</span>
+                <span className="text-sm font-black text-gray-900 dark:text-white font-mono">{liveMetrics.entropy} bits</span>
               </div>
-              {showAdvanced ? (
-                <ChevronUp className="h-4 w-4 text-gray-500 dark:text-slate-400" />
-              ) : (
-                <ChevronDown className="h-4 w-4 text-gray-500 dark:text-slate-400" />
-              )}
-            </button>
-            
-            {showAdvanced && (
-              <div className="p-4 bg-white dark:bg-slate-800/30 grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-gray-200 dark:border-slate-700 transition-colors">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-gray-500 dark:text-slate-400">Full Name</label>
-                  <div className="relative group">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <User className="h-4 w-4 text-gray-400 dark:text-slate-500 group-focus-within:text-cyan-500" />
-                    </div>
-                    <input
-                      type="text"
-                      className="block w-full pl-9 pr-3 py-2 border border-gray-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 sm:text-sm shadow-sm"
-                      placeholder="John Doe"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      disabled={loading}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-gray-500 dark:text-slate-400">Username</label>
-                  <div className="relative group">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <span className="text-gray-400 dark:text-slate-500 font-bold group-focus-within:text-cyan-500">@</span>
-                    </div>
-                    <input
-                      type="text"
-                      className="block w-full pl-9 pr-3 py-2 border border-gray-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 sm:text-sm shadow-sm"
-                      placeholder="johndoe88"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      disabled={loading}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-gray-500 dark:text-slate-400">Date of Birth</label>
-                  <div className="relative group">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <Calendar className="h-4 w-4 text-gray-400 dark:text-slate-500 group-focus-within:text-cyan-500" />
-                    </div>
-                    <input
-                      type="text"
-                      className="block w-full pl-9 pr-3 py-2 border border-gray-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 sm:text-sm shadow-sm"
-                      placeholder="YYYY-MM-DD or 1990"
-                      value={dob}
-                      onChange={(e) => setDob(e.target.value)}
-                      disabled={loading}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-gray-500 dark:text-slate-400">Email Address</label>
-                  <div className="relative group">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <Mail className="h-4 w-4 text-gray-400 dark:text-slate-500 group-focus-within:text-cyan-500" />
-                    </div>
-                    <input
-                      type="email"
-                      className="block w-full pl-9 pr-3 py-2 border border-gray-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 sm:text-sm shadow-sm"
-                      placeholder="john@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      disabled={loading}
-                    />
-                  </div>
-                </div>
-                <div className="col-span-1 md:col-span-2 mt-2 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-md border border-amber-100 dark:border-amber-800/30 text-xs text-amber-800 dark:text-amber-300 flex items-start space-x-2">
-                  <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-                  <p>Our AI will check if your password contains these predictably guessable inputs to test against targeted social engineering attacks.</p>
-                </div>
+              <div className="bg-slate-50 dark:bg-slate-800/80 border border-gray-200 dark:border-slate-700 rounded p-2.5 flex flex-col items-center justify-center text-center">
+                <Layers className="h-4 w-4 text-blue-500 mb-1" />
+                <span className="text-[10px] uppercase font-bold text-gray-500 dark:text-slate-400 tracking-wider">Diversity</span>
+                <span className="text-sm font-black text-gray-900 dark:text-white font-mono">{liveMetrics.diversity}/4</span>
               </div>
-            )}
-          </div>
-          <button
-            type="submit"
-            disabled={loading || !password.trim()}
-            className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-md shadow-cyan-500/20 dark:shadow-cyan-900/20 text-sm font-bold text-white bg-cyan-600 hover:bg-cyan-700 dark:bg-cyan-600 dark:hover:bg-cyan-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500 dark:focus:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-          >
-            {loading ? (
-              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-            ) : "Check Password"}
-          </button>
+              <div className="bg-slate-50 dark:bg-slate-800/80 border border-gray-200 dark:border-slate-700 rounded p-2.5 flex flex-col items-center justify-center text-center">
+                 <Network className="h-4 w-4 text-emerald-500 mb-1" />
+                 <span className="text-[10px] uppercase font-bold text-gray-500 dark:text-slate-400 tracking-wider">Pattern Flags</span>
+                 <span className="text-xs font-bold text-gray-900 dark:text-white uppercase mt-0.5 truncate w-full px-1" title={liveMetrics.patterns.join(', ')}>
+                     {liveMetrics.patterns.length > 0 ? liveMetrics.patterns[0] : 'None'}
+                 </span>
+              </div>
+              <div className="bg-slate-50 dark:bg-slate-800/80 border border-gray-200 dark:border-slate-700 rounded p-2.5 flex flex-col items-center justify-center text-center">
+                 {loading ? (
+                    <Activity className="h-4 w-4 text-cyan-500 mb-1 animate-spin" />
+                 ) : (
+                    <Hash className={`h-4 w-4 mb-1 ${result?.breach_check?.breached ? 'text-rose-500' : 'text-gray-500'}`} />
+                 )}
+                 <span className="text-[10px] uppercase font-bold text-gray-500 dark:text-slate-400 tracking-wider">Breaches</span>
+                 <span className={`text-sm font-black font-mono ${result?.breach_check?.breached ? 'text-rose-600' : 'text-gray-900 dark:text-white'}`}>
+                    {loading ? '...' : result?.breach_check?.breach_count?.toLocaleString() || 0}
+                 </span>
+              </div>
+            </div>
+          )}
         </form>
       </div>
 
       {/* Results Section */}
       <div className="p-6 bg-gray-50 dark:bg-slate-950/50 flex-grow transition-colors duration-300">
-        {!result && !loading && (
+        {!result && !loading && !password && (
           <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-slate-600 space-y-3 py-10 transition-colors">
             <Activity className="h-12 w-12 opacity-20" />
             <p className="text-sm font-medium">Awaiting password input for analysis...</p>
           </div>
         )}
 
-        {result && !loading && (
+        {result && password && (
           <div className="space-y-6 animate-in slide-in-from-bottom-2 fade-in duration-500">
             {/* Final Verdict Banner */}
             <div className={`w-full p-4 rounded-lg flex items-start space-x-3 shadow-md border transition-colors ${

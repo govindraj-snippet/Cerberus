@@ -1,132 +1,80 @@
+# 🛡️ Cerberus Security Engine (Backend)
 
-# 🛡️ Cybersecurity Analysis API
-
-A lightweight, high-performance API built with FastAPI that provides real-time security evaluations. It features a zero-knowledge password checker (verifying against known data breaches and calculating cryptographic strength) and an intelligent URL scanner that uses heuristic AI analysis to detect phishing and malware risks.
-
----
-
-## 💻 Tech Stack & Libraries
-
-This project uses the following core libraries:
-* **FastAPI:** The high-performance web framework for the API.
-* **Uvicorn:** The ASGI web server to run FastAPI.
-* **Requests:** For secure, external API calls (Have I Been Pwned).
-* **zxcvbn:** Dropbox's AI-driven password strength and entropy estimator.
-* **Pydantic:** For strict data validation.
+Cerberus is a high-performance cybersecurity intelligence API built with **FastAPI**. It provides real-time threat detection for URLs and passwords using a **Zero-Knowledge Architecture** and **Predictive Machine Learning**.
 
 ---
 
-## Installation & Setup
+## 🚀 Key Features
 
-**1. Clone the repository**
-```bash
-git clone [https://github.com/yourusername/your-repo-name.git](https://github.com/yourusername/your-repo-name.git)
-cd your-repo-name
-```
+### 1. Zero-Knowledge Password Evaluation
+*   **Privacy-First Design**: Cerberus never sees your raw password. The client hashes the password locally (SHA-1) and sends only the **first 5 characters** (the prefix) to the API.
+*   **k-Anonymity**: The server proxies this prefix to the *Have I Been Pwned* DB and returns 500+ possible matches. The client then performs the final match locally in the browser.
+*   **Production Strength**: Combines local `zxcvbn` heuristics with billion-entry breach databases.
 
-**2. Create a Virtual Environment**
-It is highly recommended to run this project inside a virtual environment to keep dependencies organized.
+### 2. Predictive URL Threat Intelligence
+*   **Machine Learning (Random Forest)**: Powered by a custom-trained Scikit-Learn model using a real-world phishing dataset.
+*   **Lexical Analysis**: Analyzes 15 mathematical features of every URL, including entropy, digit density, and structural depth to detect "Zero-Day" phishing sites that are not yet blacklisted.
+*   **Multi-Layer Defense**: Integrates **VirusTotal** deterministic database checks with local behavioral AI.
+
+---
+
+## 💻 Tech Stack
+
+*   **FastAPI**: Asynchronous Python web framework.
+*   **Scikit-Learn**: Powering the Random Forest ML Classifier.
+*   **Pandas**: For advanced feature engineering during training.
+*   **Joblib**: For high-speed serialized model inference.
+*   **LRU Caching**: Integrated into service layers to mitigate network latency.
+
+---
+
+## 🛠️ Installation & Setup
+
+**1. Create & Activate Virtual Environment**
 ```bash
 python -m venv venv
+# Windows:
+venv\Scripts\activate
+# Mac/Linux:
+source venv/bin/activate
 ```
 
-**3. Activate the Virtual Environment**
-* **Windows:**
-  ```bash
-  venv\Scripts\activate
-  ```
-* **Mac/Linux:**
-  ```bash
-  source venv/bin/activate
-  ```
-
-**4. Install Dependencies**
-Use the included `requirements.txt` file to install all necessary security libraries and server frameworks.
+**2. Install Production Dependencies**
 ```bash
 pip install -r requirements.txt
 ```
 
-**5. Run the Server**
-Start the FastAPI application using Uvicorn.
+**3. Initial Model Training**
+The system requires a trained "Brain" to run URL analytics.
 ```bash
-uvicorn main:app --reload
+python train_model.py
 ```
 
-*The API will now be running locally. You can view the interactive Swagger documentation and test your endpoints at: `http://127.0.0.1:8000/docs`*
+**4. Start the Engine**
+```bash
+python main.py
+```
+*API is live at `http://localhost:8000`. Documentation at `/docs`.*
 
 ---
 
-## 📖 API Endpoints
+## 📖 API Reference
 
-### 1. Check Password Security
-Evaluates a password for its cryptographic strength and checks if it has been exposed in a known data breach.
+### 🔍 URL Scan
+`POST /api/url/scan`
+Analyzes a URL for malicious patterns using ML + VirusTotal.
 
-* **URL:** `/api/password/check`
-* **Method:** `POST`
-* **Headers:** `Content-Type: application/json`
-
-**Request Body:**
+**Request:**
 ```json
-{
-  "password": "PurpleElephantsDanceAtMidnight!"
-}
+{ "url": "https://secure-login-verify-paypal.com" }
 ```
 
-**Success Response:**
-```json
-{
-  "final_verdict": true,
-  "user_message": "✅ SAFE: This is a strong, highly secure password that has never been breached. You can confidently use it.",
-  "strength_analysis": {
-    "score": 4,
-    "max_score": 4,
-    "feedback": [
-      "This password is highly secure and unpredictable!"
-    ],
-    "estimated_guesses_to_crack": 15000000000000
-  },
-  "breach_check": {
-    "breached": false,
-    "breach_count": 0
-  }
-}
-```
+### 🔑 Password Breach Proxy
+`GET /api/password/breach-check/{prefix}`
+Accepts a 5-char SHA-1 prefix for Zero-Knowledge verification.
 
 ---
 
-### 2. Scan URL for Threats
-Analyzes a URL for missing encryption, phishing keywords, suspicious lengths, and checks it against known threat databases.
-
-* **URL:** `/api/url/scan`
-* **Method:** `POST`
-* **Headers:** `Content-Type: application/json`
-
-**Request Body:**
-```json
-{
-  "url": "[http://login-update-account-security-check-paypal-verify.com](http://login-update-account-security-check-paypal-verify.com)"
-}
-```
-
-**Success Response:**
-```json
-{
-  "url": "[http://login-update-account-security-check-paypal-verify.com](http://login-update-account-security-check-paypal-verify.com)",
-  "final_verdict": false,
-  "user_message": "⚠️ WARNING: Our AI detected severe suspicious patterns (Risk Score: 100/100). Proceed with extreme caution.",
-  "database_check": {
-    "is_safe": true,
-    "note": "URL not found in malicious database."
-  },
-  "ai_analysis": {
-    "risk_score": 100,
-    "risk_level": "High",
-    "features_analyzed": {
-      "length": 60,
-      "is_https": 0,
-      "hyphen_count": 6
-    }
-  }
-}
-```
-```
+## 🔐 Security & Privacy
+*   **No Persistence**: Cerberus caches threat data in memory but never stores user inputs (URLs or Hashes) in a database.
+*   **Encrypted Inference**: All ML calculations are performed locally on the server without external data transmission.

@@ -1,8 +1,7 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
-# Keep your existing database import here! Example:
-# from services.database_check import check_url_in_db 
-from services.url_eval import analyze_url_heuristics
+from services.safe_browsing import check_safe_browsing
+from services.ml_feature_extractor import predict_url_safety
 
 router = APIRouter()
 
@@ -13,45 +12,40 @@ class URLRequest(BaseModel):
 def scan_url(request: URLRequest):
     target_url = request.url
     
-    # 1. Get the AI Heuristics Analysis
-    ai_data = analyze_url_heuristics(target_url)
+    # 1. Get the LIVE ML AI Analysis
+    ai_data = predict_url_safety(target_url)
     ai_score = ai_data.get("risk_score", 0)
     
     # 2. Get Database Check
-    # Replace the mock dictionary below with your ACTUAL database function call
-    # Example: db_data = check_url_in_db(target_url)
-    
-    # --- MOCK DB LOGIC (Remove this when you hook up your real database function) ---
-    db_data = {"is_safe": True, "note": "URL not found in malicious database."}
-    if "amtso.org" in target_url:
-        db_data = {"is_safe": False, "threat_type": "MALWARE/PHISHING", "details": "Flagged as dangerous by 12 vendors."}
-    # ---------------------------------------------------------------------------------
+    # 2. Get Database Check using VirusTotal API (graceful fallback if NO API KEY)
+    db_data = check_safe_browsing(target_url)
     
     db_is_safe = db_data.get("is_safe", True)
     
     # 3. Calculate Final Verdict & Message
+    # Thresholds are aligned with the 15-feature RF Model precision
     final_verdict = False
     user_message = ""
     
-    # Rule A: Instant failure if the database (like VirusTotal) flags it
+    # Priority 1: Database matches (Deterministic intelligence)
     if not db_is_safe:
         final_verdict = False
-        user_message = "DANGER: This website has been flagged as a known threat (MALWARE/PHISHING). Do NOT visit this link!"
+        user_message = "CRITICAL: This URL is blacklisted in our threat intelligence databases. Access has been denied for your protection."
         
-    # Rule B: AI catches severe suspicious patterns (Score 50+)
-    elif ai_score >= 50:
+    # Priority 2: High AI Score (75%+) - Deep Phishing Patterns detected
+    elif ai_score >= 75:
         final_verdict = False
-        user_message = f" WARNING: Our AI detected severe suspicious patterns (Risk Score: {ai_score}/100). Proceed with extreme caution."
+        user_message = f"DANGER: Our Zero-Day AI detected high-confidence phishing patterns (Risk: {ai_score}%). This site is likely a credential harvester."
         
-    # Rule C: AI catches minor issues, like missing HTTPS (Score 30-49)
-    elif ai_score >= 30:
-        final_verdict = True 
-        user_message = f" MILD RISK: This site isn't flagged as malicious, but it lacks encryption or has minor suspicious traits (Risk Score: {ai_score}/100). Do not enter passwords here."
+    # Priority 3: Medium AI Score (40% - 74%) - Suspicious Structure
+    elif ai_score >= 40:
+        final_verdict = True # Allow but warn
+        user_message = f"CAUTION: While not blacklisted, this URL has suspicious lexical traits (Risk: {ai_score}%). Verify the sender before clicking."
         
-    # Rule D: Clean bill of health
+    # Priority 4: Clean
     else:
         final_verdict = True
-        user_message = "SAFE: This website checks out as completely safe. You can browse it with confidence."
+        user_message = "SECURE: No malicious signatures or zero-day patterns detected. The link appears safe for navigation."
 
     # 4. Return Data
     return {

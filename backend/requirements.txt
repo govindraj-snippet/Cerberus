@@ -1,5 +1,8 @@
 fastapi
 uvicorn
 requests
-zxcvbn
 pydantic
+scikit-learn
+pandas
+joblib
+python-dotenv
